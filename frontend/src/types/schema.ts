@@ -29,11 +29,11 @@ export enum BiasLabel {
  */
 export const NewsCardSchema = z.object({
   title: z.string().min(1),
-  image: z.string(),
+  image: z.string().nullable().optional(),
   source: z.string().min(1),
-  summary: z.string(),
+  summary: z.string().nullable().optional(),
   url: z.string(),
-  date: z.string(),
+  date: z.string().nullable().optional(),
 });
 
 /**
@@ -41,9 +41,6 @@ export const NewsCardSchema = z.object({
  */
 export const FeedResponseSchema = z.object({
   results: z.array(NewsCardSchema),
-  next_cursor: z.string().optional().nullable(),
-  total_count: z.number().int().nonnegative().optional(),
-  query: z.string().optional(),
 });
 
 /**
