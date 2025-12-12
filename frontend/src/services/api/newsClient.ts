@@ -244,6 +244,7 @@ class NewsApiClient {
     const endpoint = `/search?${params.toString()}`;
     const rawData = await this.fetchWithTimeout<unknown>(endpoint);
 
+    // Backend returns array directly, validate as array
     return this.validateResponse(rawData, FeedResponseSchema, endpoint);
   }
 
@@ -257,7 +258,8 @@ class NewsApiClient {
     // Search for the specific article
     const feed = await this.searchFeed(articleUrl);
     
-    const match = feed.results.find(
+    // Feed is now an array directly
+    const match = feed.find(
       (card) => card.url === articleUrl
     );
 
