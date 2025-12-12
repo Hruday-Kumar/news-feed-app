@@ -30,8 +30,14 @@ CACHE_TTL = 300
 print("✅ Briefly API Ready!")
 
 # =============================================================================
-# ENDPOINT
+# ENDPOINTS
 # =============================================================================
+
+@app.get("/")
+async def health_check():
+    """Health check endpoint."""
+    return {"status": "ok", "service": "Briefly API"}
+
 
 @app.get("/search")
 async def search_news(q: str):
@@ -49,7 +55,7 @@ async def search_news(q: str):
         cached = FEED_CACHE[cache_key]
         if time.time() - cached["timestamp"] < CACHE_TTL:
             print("⚡ Cache hit!")
-            return {"results": cached["data"]}
+            return cached["data"]
     
     # Fetch from GNews
     try:
@@ -75,29 +81,31 @@ async def search_news(q: str):
         articles = data.get("articles", [])
         print(f"   Found {len(articles)} articles")
         
-        # Transform to frontend format
-        results = []
-        for art in articles:
-            if not art.get("url"):
+        # Transform to frontend format - FIXED MAPPING
+        formatted_articles = []
+        for article in articles:
+            if not article.get("url"):
                 continue
             
-            results.append({
-                "title": art.get("title", "Untitled"),
-                "image": art.get("image", "https://images.unsplash.com/photo-1504711434969-e33886168f5c?w=800"),
-                "source": art.get("source", {}).get("name", "Unknown"),
-                "summary": art.get("description", "No description available."),
-                "url": art["url"],
-                "date": art.get("publishedAt", "")[:10] if art.get("publishedAt") else ""
+            formatted_articles.append({
+                "id": article.get("url"),
+                "title": article.get("title", "Untitled"),
+                "summary": [article.get("description", "No summary available.")],
+                "imageUrl": article.get("image", "https://images.unsplash.com/photo-1504711434969-e33886168f5c?w=800"),
+                "source": article.get("source", {}).get("name", "Unknown"),
+                "publishedAt": article.get("publishedAt", ""),
+                "url": article.get("url"),
+                "biasLabel": "Neutral"
             })
         
         # Cache results
         FEED_CACHE[cache_key] = {
-            "data": results,
+            "data": formatted_articles,
             "timestamp": time.time()
         }
         
-        print(f"✅ Returning {len(results)} articles")
-        return {"results": results}
+        print(f"✅ Returning {len(formatted_articles)} articles")
+        return formatted_articles
         
     except httpx.RequestError as e:
         print(f"❌ Network error: {e}")
