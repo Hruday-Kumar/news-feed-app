@@ -28,21 +28,23 @@ export enum BiasLabel {
  * Matches the backend JSON response structure from /search endpoint.
  */
 export const NewsCardSchema = z.object({
-  id: z.string(),
   title: z.string().min(1),
-  imageUrl: z.string().nullable().optional(),
+  image: z.string(),
   source: z.string().min(1),
-  summary: z.array(z.string()),
+  summary: z.string(),
   url: z.string(),
-  publishedAt: z.string(),
-  biasLabel: z.string().optional().default("Neutral"),
+  date: z.string(),
 });
 
 /**
  * Schema for the feed API response.
- * Backend returns array directly, not wrapped in object.
  */
-export const FeedResponseSchema = z.array(NewsCardSchema);
+export const FeedResponseSchema = z.object({
+  results: z.array(NewsCardSchema),
+  next_cursor: z.string().optional().nullable(),
+  total_count: z.number().int().nonnegative().optional(),
+  query: z.string().optional(),
+});
 
 /**
  * Schema for user preferences (for future personalization features).
@@ -84,22 +86,18 @@ export type UserPreferences = z.infer<typeof UserPreferencesSchema>;
  * Use this for strict compile-time checking.
  */
 export interface INewsCard {
-  /** Unique ID (article URL) */
-  id: string;
   /** Article headline */
   title: string;
   /** URL to the article image */
-  imageUrl: string | null;
+  image: string;
   /** Name of the news source */
   source: string;
-  /** AI-generated summary as array */
-  summary: string[];
+  /** AI-generated summary */
+  summary: string;
   /** URL to the original article */
   url: string;
-  /** Publication date */
-  publishedAt: string;
-  /** Bias label */
-  biasLabel?: string;
+  /** Publication date (YYYY-MM-DD) */
+  date: string;
 }
 
 export interface IFeedResponse {

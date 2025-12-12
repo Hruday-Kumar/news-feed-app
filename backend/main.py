@@ -55,7 +55,7 @@ async def search_news(q: str):
         cached = FEED_CACHE[cache_key]
         if time.time() - cached["timestamp"] < CACHE_TTL:
             print("⚡ Cache hit!")
-            return cached["data"]
+            return {"results": cached["data"]}
     
     # Fetch from GNews
     try:
@@ -81,31 +81,32 @@ async def search_news(q: str):
         articles = data.get("articles", [])
         print(f"   Found {len(articles)} articles")
         
-        # Transform to frontend format - FIXED MAPPING
-        formatted_articles = []
+        # Transform to frontend format
+        results = []
         for article in articles:
             if not article.get("url"):
                 continue
             
-            formatted_articles.append({
-                "id": article.get("url"),
+            published = article.get("publishedAt", "")
+            date_str = published[:10] if published else ""
+            
+            results.append({
                 "title": article.get("title", "Untitled"),
-                "summary": [article.get("description", "No summary available.")],
-                "imageUrl": article.get("image", "https://images.unsplash.com/photo-1504711434969-e33886168f5c?w=800"),
+                "image": article.get("image", "https://images.unsplash.com/photo-1504711434969-e33886168f5c?w=800"),
                 "source": article.get("source", {}).get("name", "Unknown"),
-                "publishedAt": article.get("publishedAt", ""),
+                "summary": article.get("description", "No summary available."),
                 "url": article.get("url"),
-                "biasLabel": "Neutral"
+                "date": date_str
             })
         
         # Cache results
         FEED_CACHE[cache_key] = {
-            "data": formatted_articles,
+            "data": results,
             "timestamp": time.time()
         }
         
-        print(f"✅ Returning {len(formatted_articles)} articles")
-        return formatted_articles
+        print(f"✅ Returning {len(results)} articles")
+        return {"results": results}
         
     except httpx.RequestError as e:
         print(f"❌ Network error: {e}")
