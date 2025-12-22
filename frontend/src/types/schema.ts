@@ -34,6 +34,7 @@ export const NewsCardSchema = z.object({
   summary: z.string().nullable().optional(),
   url: z.string(),
   date: z.string().nullable().optional(),
+  topic: z.string().optional(),
 });
 
 /**
@@ -41,6 +42,30 @@ export const NewsCardSchema = z.object({
  */
 export const FeedResponseSchema = z.object({
   results: z.array(NewsCardSchema),
+  message: z.string().optional(),
+  total: z.number().optional(),
+  page: z.number().optional(),
+  has_more: z.boolean().optional(),
+});
+
+/**
+ * Schema for user data.
+ */
+export const UserSchema = z.object({
+  id: z.string(),
+  email: z.string(),
+  name: z.string(),
+  saved_topics: z.array(z.string()).default([]),
+  favorites_count: z.number().optional(),
+});
+
+/**
+ * Schema for auth response.
+ */
+export const AuthResponseSchema = z.object({
+  message: z.string(),
+  token: z.string(),
+  user: UserSchema,
 });
 
 /**
@@ -73,6 +98,16 @@ export type FeedResponse = z.infer<typeof FeedResponseSchema>;
  * User preferences for personalized feed.
  */
 export type UserPreferences = z.infer<typeof UserPreferencesSchema>;
+
+/**
+ * User data type.
+ */
+export type User = z.infer<typeof UserSchema>;
+
+/**
+ * Auth response type.
+ */
+export type AuthResponse = z.infer<typeof AuthResponseSchema>;
 
 // =============================================================================
 // EXPLICIT INTERFACE DEFINITIONS (Alternative, for documentation)

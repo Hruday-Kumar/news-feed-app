@@ -20,7 +20,7 @@ import {
 // =============================================================================
 
 const API_CONFIG = {
-  BASE_URL: process.env.NEXT_PUBLIC_API_URL || "https://news-feed-app-4o9x.onrender.com",
+  BASE_URL: process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000",
   TIMEOUT_MS: 60000, // 60 seconds (3 articles with AI summarization)
   RETRY_ATTEMPTS: 1, // Reduce retries to avoid long waits
 } as const;
@@ -184,7 +184,7 @@ class NewsApiClient {
   /**
    * Fetch the default/trending news feed.
    * 
-   * @param cursor - Optional pagination cursor for infinite scroll
+   * @param page - Page number for pagination (default: 1)
    * @returns Promise<FeedResponse> - Validated feed response
    * 
    * @example
@@ -194,15 +194,13 @@ class NewsApiClient {
    * console.log(feed.results); // NewsCard[]
    * ```
    */
-  public async getFeed(cursor?: string): Promise<FeedResponse> {
+  public async getFeed(page: number = 1): Promise<FeedResponse> {
     const params = new URLSearchParams();
     
     // Default query for trending/general news
     params.set("q", "trending OR breaking news");
-    
-    if (cursor) {
-      params.set("cursor", cursor);
-    }
+    params.set("page", String(page));
+    params.set("max", "10");
 
     const endpoint = `/search?${params.toString()}`;
     const rawData = await this.fetchWithTimeout<unknown>(endpoint);
@@ -214,17 +212,17 @@ class NewsApiClient {
    * Search for news articles by query.
    * 
    * @param query - Search query string (e.g., "AI technology", "climate change")
-   * @param cursor - Optional pagination cursor for infinite scroll
+   * @param page - Page number for pagination (default: 1)
    * @returns Promise<FeedResponse> - Validated feed response
    * 
    * @example
    * ```ts
    * const client = NewsApiClient.getInstance();
-   * const results = await client.searchFeed("SpaceX launch");
+   * const results = await client.searchFeed("SpaceX launch", 1);
    * console.log(results.results); // NewsCard[]
    * ```
    */
-  public async searchFeed(query: string, cursor?: string): Promise<FeedResponse> {
+  public async searchFeed(query: string, page: number = 1): Promise<FeedResponse> {
     if (!query.trim()) {
       throw new NewsApiError(
         "Search query cannot be empty",
@@ -236,10 +234,8 @@ class NewsApiClient {
 
     const params = new URLSearchParams();
     params.set("q", query.trim());
-    
-    if (cursor) {
-      params.set("cursor", cursor);
-    }
+    params.set("page", String(page));
+    params.set("max", "10");
 
     const endpoint = `/search?${params.toString()}`;
     const rawData = await this.fetchWithTimeout<unknown>(endpoint);
@@ -302,8 +298,8 @@ export { NewsApiClient };
  * Fetch the default news feed.
  * Convenience wrapper around newsClient.getFeed()
  */
-export async function getFeed(cursor?: string): Promise<FeedResponse> {
-  return newsClient.getFeed(cursor);
+export async function getFeed(page?: number): Promise<FeedResponse> {
+  return newsClient.getFeed(page);
 }
 
 /**
@@ -312,7 +308,7 @@ export async function getFeed(cursor?: string): Promise<FeedResponse> {
  */
 export async function searchFeed(
   query: string,
-  cursor?: string
+  page?: number
 ): Promise<FeedResponse> {
-  return newsClient.searchFeed(query, cursor);
+  return newsClient.searchFeed(query, page);
 }

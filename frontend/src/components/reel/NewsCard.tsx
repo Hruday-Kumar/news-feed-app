@@ -1,10 +1,12 @@
 "use client";
 
-import { memo } from "react";
+import { memo, useState } from "react";
 import Image from "next/image";
 import { motion } from "framer-motion";
-import { ExternalLink, Clock, Newspaper } from "lucide-react";
+import { ExternalLink, Clock, Newspaper, Heart, Share2, Loader2 } from "lucide-react";
 import type { NewsCard as NewsCardType } from "@/types/schema";
+import { useAuthStore } from "@/store/useAuthStore";
+import { authClient } from "@/services/api/authClient";
 
 // =============================================================================
 // TYPES
@@ -56,19 +58,63 @@ const headlineVariants = {
 // =============================================================================
 
 function NewsCardComponent({ item, isActive, index, total }: NewsCardProps) {
+  const { user, token } = useAuthStore();
+  const [isFavorited, setIsFavorited] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  
+  // Fallback image if none provided
+  const imageUrl: string = item.image ?? "https://images.unsplash.com/photo-1504711434969-e33886168f5c?q=80&w=1200&auto=format&fit=crop";
+  
   // Parse summary into bullet points if it's a single string
-  const summaryPoints = item.summary
+  const summaryText: string = item.summary ?? "No summary available.";
+  const summaryPoints = summaryText
     .split(/[.!?]+/)
     .map((s) => s.trim())
     .filter((s) => s.length > 15)
     .slice(0, 3);
+
+  const handleFavorite = async () => {
+    if (!token || isSaving) return;
+    
+    setIsSaving(true);
+    try {
+      if (isFavorited) {
+        await authClient.removeFavorite(item.url, token);
+        setIsFavorited(false);
+      } else {
+        await authClient.addFavorite(item, token);
+        setIsFavorited(true);
+      }
+    } catch (error) {
+      console.error("Failed to update favorite:", error);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleShare = async () => {
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: item.title,
+          text: item.summary || "",
+          url: item.url,
+        });
+      } catch (error) {
+        console.log("Share cancelled");
+      }
+    } else {
+      // Fallback: copy to clipboard
+      navigator.clipboard.writeText(item.url);
+    }
+  };
 
   return (
     <article className="relative h-[100dvh] w-full flex-shrink-0 overflow-hidden">
       {/* Background Image */}
       <div className="absolute inset-0">
         <Image
-          src={item.image}
+          src={imageUrl}
           alt={item.title}
           fill
           priority={isActive}
@@ -175,19 +221,36 @@ function NewsCardComponent({ item, isActive, index, total }: NewsCardProps) {
             </a>
 
             <div className="flex gap-2">
-              {[
-                { icon: "❤️", label: "Like" },
-                { icon: "📤", label: "Share" },
-              ].map((action) => (
+              {/* Favorite Button */}
+              {user && (
                 <button
-                  key={action.label}
                   type="button"
-                  aria-label={action.label}
-                  className="h-11 w-11 rounded-xl bg-white/10 border border-white/10 backdrop-blur-sm flex items-center justify-center text-lg hover:bg-white/20 transition-all hover:scale-105 active:scale-95"
+                  onClick={handleFavorite}
+                  disabled={isSaving}
+                  aria-label={isFavorited ? "Remove from favorites" : "Add to favorites"}
+                  className={`h-11 w-11 rounded-xl border backdrop-blur-sm flex items-center justify-center transition-all hover:scale-105 active:scale-95 ${
+                    isFavorited 
+                      ? "bg-pink-500/20 border-pink-500/30 text-pink-400" 
+                      : "bg-white/10 border-white/10 text-white/70 hover:bg-white/20"
+                  }`}
                 >
-                  {action.icon}
+                  {isSaving ? (
+                    <Loader2 className="w-5 h-5 animate-spin" />
+                  ) : (
+                    <Heart className={`w-5 h-5 ${isFavorited ? "fill-current" : ""}`} />
+                  )}
                 </button>
-              ))}
+              )}
+              
+              {/* Share Button */}
+              <button
+                type="button"
+                onClick={handleShare}
+                aria-label="Share"
+                className="h-11 w-11 rounded-xl bg-white/10 border border-white/10 backdrop-blur-sm flex items-center justify-center text-white/70 hover:bg-white/20 transition-all hover:scale-105 active:scale-95"
+              >
+                <Share2 className="w-5 h-5" />
+              </button>
             </div>
           </motion.div>
 

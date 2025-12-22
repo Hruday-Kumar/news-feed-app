@@ -4,7 +4,7 @@
  * Handles loading states, errors, pagination, and store integration.
  */
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState, useRef } from "react";
 import { newsClient } from "@/services/api/newsClient";
 import { useFeedStore } from "@/store/useFeedStore";
 import type { FeedResponse } from "@/types/schema";
@@ -21,18 +21,24 @@ interface UseNewsFeedOptions {
 }
 
 interface UseNewsFeedReturn {
-  /** Loading state */
+  /** Loading state for initial fetch */
   loading: boolean;
+  /** Loading state for loading more */
+  loadingMore: boolean;
   /** Error message if fetch failed */
   error: string | null;
   /** Whether more items can be loaded */
   hasMore: boolean;
+  /** Current page number */
+  page: number;
   /** Fetch/refresh the feed */
   fetchFeed: (query?: string) => Promise<void>;
   /** Load more items (pagination) */
   loadMore: () => Promise<void>;
   /** Clear error state */
   clearError: () => void;
+  /** Manually set hasMore (for external data loading) */
+  setHasMoreManual: (value: boolean) => void;
 }
 
 // =============================================================================
@@ -46,11 +52,13 @@ export function useNewsFeed(
 
   // Local state
   const [loading, setLoading] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(true);
-
-  // Pagination cursor ref (doesn't trigger re-renders)
-  const cursorRef = useRef<string | undefined>(undefined);
+  const [page, setPage] = useState(1);
+  
+  // Ref to prevent duplicate requests
+  const isLoadingRef = useRef(false);
 
   // Store actions
   const setFeed = useFeedStore((state) => state.setFeed);
@@ -68,7 +76,8 @@ export function useNewsFeed(
 
       setLoading(true);
       setError(null);
-      cursorRef.current = undefined;
+      setPage(1);
+      setHasMore(true);
 
       try {
         // Reset store before fetching
@@ -81,14 +90,14 @@ export function useNewsFeed(
         let response: FeedResponse;
 
         if (searchQuery && searchQuery.trim()) {
-          response = await newsClient.searchFeed(searchQuery.trim());
+          response = await newsClient.searchFeed(searchQuery.trim(), 1);
         } else {
-          response = await newsClient.getFeed();
+          response = await newsClient.getFeed(1);
         }
 
         setFeed(response.results);
-        cursorRef.current = response.next_cursor ?? undefined;
-        setHasMore(!!response.next_cursor || response.results.length > 0);
+        setHasMore(response.has_more ?? response.results.length >= 10);
+        setPage(1);
       } catch (err) {
         const message =
           err instanceof Error ? err.message : "Failed to fetch news feed";
@@ -105,45 +114,55 @@ export function useNewsFeed(
    * Load more items (pagination)
    */
   const loadMore = useCallback(async () => {
-    if (loading || !hasMore) return;
-
-    setLoading(true);
+    // Prevent duplicate requests
+    if (isLoadingRef.current || !hasMore) return;
+    
+    isLoadingRef.current = true;
+    setLoadingMore(true);
     setError(null);
+
+    const nextPage = page + 1;
 
     try {
       const searchQuery = storeQuery || initialQuery;
       let response: FeedResponse;
 
       if (searchQuery && searchQuery.trim()) {
-        response = await newsClient.searchFeed(
-          searchQuery.trim(),
-          cursorRef.current
-        );
+        response = await newsClient.searchFeed(searchQuery.trim(), nextPage);
       } else {
-        response = await newsClient.getFeed(cursorRef.current);
+        response = await newsClient.getFeed(nextPage);
       }
 
       if (response.results.length > 0) {
         appendItems(response.results);
-        cursorRef.current = response.next_cursor ?? undefined;
+        setPage(nextPage);
+        setHasMore(response.has_more ?? response.results.length >= 10);
+      } else {
+        setHasMore(false);
       }
-
-      setHasMore(!!response.next_cursor);
     } catch (err) {
       const message =
         err instanceof Error ? err.message : "Failed to load more items";
       setError(message);
       console.error("[useNewsFeed] LoadMore error:", err);
     } finally {
-      setLoading(false);
+      setLoadingMore(false);
+      isLoadingRef.current = false;
     }
-  }, [loading, hasMore, storeQuery, initialQuery, appendItems]);
+  }, [hasMore, page, storeQuery, initialQuery, appendItems]);
 
   /**
    * Clear error state
    */
   const clearError = useCallback(() => {
     setError(null);
+  }, []);
+
+  /**
+   * Manually set hasMore (for external data sources like personalized feed)
+   */
+  const setHasMoreManual = useCallback((value: boolean) => {
+    setHasMore(value);
   }, []);
 
   /**
@@ -158,11 +177,14 @@ export function useNewsFeed(
 
   return {
     loading,
+    loadingMore,
     error,
     hasMore,
+    page,
     fetchFeed,
     loadMore,
     clearError,
+    setHasMoreManual,
   };
 }
 

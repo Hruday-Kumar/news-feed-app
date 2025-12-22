@@ -1,37 +1,75 @@
 # Render.com Infrastructure as Code
+# ===================================
 # Deploy both frontend and backend with a single repo connection
 # Docs: https://render.com/docs/blueprint-spec
+#
+# Version: 2.0.0
+# Last Updated: December 2024
 
 services:
   # ===========================================================================
-  # BACKEND SERVICE (FastAPI + GNews API)
+  # BACKEND SERVICE (FastAPI + Python)
   # ===========================================================================
   - type: web
-    name: news-backend
+    name: briefly-api
     runtime: python
+    region: oregon
+    plan: free
     rootDir: backend
-    buildCommand: pip install -r requirements.txt
-    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    buildCommand: |
+      pip install --upgrade pip
+      pip install -r requirements.txt
+    startCommand: gunicorn main:app -w 2 -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:$PORT --timeout 120
+    healthCheckPath: /health
+    autoDeploy: true
     envVars:
+      # Required - Set in Render Dashboard
       - key: GNEWS_API_KEY
         sync: false
+      
+      # Security - Auto-generated
+      - key: JWT_SECRET
+        generateValue: true
+      
+      # Environment
+      - key: ENVIRONMENT
+        value: production
+      
+      # Python version
       - key: PYTHON_VERSION
-        value: "3.11"
+        value: "3.11.0"
+      
+      # JWT expiry
+      - key: JWT_EXPIRE_DAYS
+        value: "30"
 
   # ===========================================================================
   # FRONTEND SERVICE (Next.js)
   # ===========================================================================
   - type: web
-    name: news-frontend
+    name: briefly-app
     runtime: node
+    region: oregon
+    plan: free
     rootDir: frontend
-    buildCommand: npm install && npm run build
+    buildCommand: |
+      npm ci --legacy-peer-deps
+      npm run build
     startCommand: npm start
+    healthCheckPath: /
+    autoDeploy: true
     envVars:
+      # API URL - Links to backend service
       - key: NEXT_PUBLIC_API_URL
         fromService:
           type: web
-          name: news-backend
+          name: briefly-api
           envVarKey: RENDER_EXTERNAL_URL
+      
+      # Node version
       - key: NODE_VERSION
-        value: "20"
+        value: "20.10.0"
+      
+      # Production mode
+      - key: NODE_ENV
+        value: production

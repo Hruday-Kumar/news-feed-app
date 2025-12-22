@@ -1,13 +1,18 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import type { ChangeEvent, FormEvent } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Search, Loader2, RefreshCw, Sparkles } from "lucide-react";
+import { Search, Loader2, RefreshCw, Sparkles, User, Plus, Bookmark } from "lucide-react";
 import { useFeedStore } from "@/store/useFeedStore";
+import { useAuthStore } from "@/store/useAuthStore";
 import { useNewsFeed } from "@/hooks/useNewsFeed";
+import { authClient } from "@/services/api/authClient";
 import { SwipeHandler } from "@/components/ui/SwipeHandler";
 import { FeedContainer } from "@/components/feed/FeedContainer";
+import { AuthForm } from "@/components/auth/AuthForm";
+import { UserPanel } from "@/components/user/UserPanel";
+import { TopicsManager } from "@/components/topics/TopicsManager";
 
 // =============================================================================
 // SEARCH HEADER COMPONENT
@@ -16,12 +21,20 @@ import { FeedContainer } from "@/components/feed/FeedContainer";
 function SearchHeader({
   onSearch,
   loading,
+  onUserClick,
+  onSaveTopic,
+  currentQuery,
 }: {
   onSearch: (query: string) => void;
   loading: boolean;
+  onUserClick: () => void;
+  onSaveTopic: (topic: string) => void;
+  currentQuery: string;
 }) {
   const [inputValue, setInputValue] = useState("");
   const [isExpanded, setIsExpanded] = useState(false);
+  const { user, token } = useAuthStore();
+  const [isSaving, setIsSaving] = useState(false);
 
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault();
@@ -37,7 +50,20 @@ function SearchHeader({
     setIsExpanded(false);
   };
 
-  const quickTags = ["Space", "Cricket", "AI", "Climate", "Startups"];
+  const handleSaveTopic = async () => {
+    if (!currentQuery || !token) return;
+    setIsSaving(true);
+    try {
+      await onSaveTopic(currentQuery);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  // Show user's saved topics as quick tags if logged in
+  const quickTags = user?.saved_topics?.length 
+    ? user.saved_topics.slice(0, 5) 
+    : ["Space", "Cricket", "AI", "Climate", "Startups"];
 
   return (
     <header className="fixed top-0 left-0 right-0 z-50 p-4 pointer-events-none">
@@ -76,6 +102,44 @@ function SearchHeader({
             {loading && (
               <Loader2 className="w-5 h-5 text-sky-400 animate-spin" />
             )}
+
+            {/* Save Topic Button */}
+            {user && currentQuery && !loading && (
+              <motion.button
+                type="button"
+                onClick={handleSaveTopic}
+                disabled={isSaving || user.saved_topics.includes(currentQuery)}
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                className="h-9 w-9 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center text-white/60 hover:text-sky-400 hover:border-sky-400/30 transition-all disabled:opacity-50"
+                title={user.saved_topics.includes(currentQuery) ? "Topic already saved" : "Save this topic"}
+              >
+                {isSaving ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : user.saved_topics.includes(currentQuery) ? (
+                  <Bookmark className="w-4 h-4 fill-current text-sky-400" />
+                ) : (
+                  <Plus className="w-4 h-4" />
+                )}
+              </motion.button>
+            )}
+
+            {/* User Button */}
+            <motion.button
+              type="button"
+              onClick={onUserClick}
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              className="h-9 w-9 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center text-white/60 hover:text-white hover:border-white/30 transition-all"
+            >
+              {user ? (
+                <div className="h-7 w-7 rounded-lg bg-gradient-to-br from-sky-400 to-blue-600 flex items-center justify-center text-white text-xs font-bold">
+                  {user.name.charAt(0).toUpperCase()}
+                </div>
+              ) : (
+                <User className="w-4 h-4" />
+              )}
+            </motion.button>
           </div>
 
           {/* Expanded Search */}
@@ -270,13 +334,52 @@ function EmptyState({ onSearch }: { onSearch: (query: string) => void }) {
 
 export default function Home() {
   const feed = useFeedStore((state) => state.feed);
-  const { loading, error, fetchFeed, clearError } = useNewsFeed({
+  const setFeed = useFeedStore((state) => state.setFeed);
+  const query = useFeedStore((state) => state.query);
+  const { user, token, updateTopics } = useAuthStore();
+  const { 
+    loading, 
+    loadingMore, 
+    error, 
+    hasMore, 
+    fetchFeed, 
+    loadMore, 
+    clearError,
+    setHasMoreManual 
+  } = useNewsFeed({
     autoFetch: false,
   });
+  
+  const [showUserPanel, setShowUserPanel] = useState(false);
+  const [showAuth, setShowAuth] = useState(false);
+  const [isLoadingPersonalized, setIsLoadingPersonalized] = useState(false);
+
+  // Load personalized feed on login
+  useEffect(() => {
+    const loadPersonalizedFeed = async () => {
+      if (user && token && user.saved_topics.length > 0 && feed.length === 0) {
+        setIsLoadingPersonalized(true);
+        try {
+          const result = await authClient.getPersonalizedFeed(token);
+          if (result.results.length > 0) {
+            setFeed(result.results);
+            // Personalized feed doesn't support pagination - mark as no more
+            setHasMoreManual(false);
+          }
+        } catch (err) {
+          console.error("Failed to load personalized feed:", err);
+        } finally {
+          setIsLoadingPersonalized(false);
+        }
+      }
+    };
+    
+    loadPersonalizedFeed();
+  }, [user, token, setHasMoreManual]);
 
   const handleSearch = useCallback(
-    (query: string) => {
-      fetchFeed(query);
+    (searchQuery: string) => {
+      fetchFeed(searchQuery);
     },
     [fetchFeed]
   );
@@ -286,9 +389,52 @@ export default function Home() {
     fetchFeed();
   }, [clearError, fetchFeed]);
 
+  const handleUserClick = () => {
+    if (user) {
+      setShowUserPanel(true);
+    } else {
+      setShowAuth(true);
+    }
+  };
+
+  const handleSaveTopic = async (topic: string) => {
+    if (!token) return;
+    try {
+      const result = await authClient.saveTopic(topic, token);
+      updateTopics(result.topics);
+    } catch (err) {
+      console.error("Failed to save topic:", err);
+    }
+  };
+
+  const handleTopicSearch = (topic: string) => {
+    fetchFeed(topic);
+  };
+
+  const handleViewFavorites = async () => {
+    if (!token) return;
+    try {
+      const result = await authClient.getFavorites(token);
+      if (result.favorites.length > 0) {
+        setFeed(result.favorites);
+      }
+    } catch (err) {
+      console.error("Failed to load favorites:", err);
+    }
+  };
+
+  // Show auth form if not logged in and user clicks login
+  if (showAuth && !user) {
+    return (
+      <main className="h-[100dvh] w-full bg-[#05060a] text-white overflow-hidden">
+        <AuthForm onSuccess={() => setShowAuth(false)} />
+      </main>
+    );
+  }
+
   // Determine which state to render
   const renderContent = () => {
-    if (loading && feed.length === 0) {
+    if ((loading || isLoadingPersonalized) && feed.length === 0) {
       return <LoadingState />;
     }
 
@@ -302,15 +448,33 @@ export default function Home() {
 
     return (
       <SwipeHandler enabled={feed.length > 0} className="h-full w-full">
-        <FeedContainer />
+        <FeedContainer 
+          onLoadMore={loadMore}
+          loadingMore={loadingMore}
+          hasMore={hasMore}
+        />
       </SwipeHandler>
     );
   };
 
   return (
     <main className="h-[100dvh] w-full bg-[#05060a] text-white overflow-hidden">
-      <SearchHeader onSearch={handleSearch} loading={loading} />
+      <SearchHeader 
+        onSearch={handleSearch} 
+        loading={loading || isLoadingPersonalized} 
+        onUserClick={handleUserClick}
+        onSaveTopic={handleSaveTopic}
+        currentQuery={query}
+      />
       {renderContent()}
+      
+      {/* User Panel */}
+      <UserPanel 
+        isOpen={showUserPanel} 
+        onClose={() => setShowUserPanel(false)}
+        onTopicSearch={handleTopicSearch}
+        onViewFavorites={handleViewFavorites}
+      />
     </main>
   );
 }
