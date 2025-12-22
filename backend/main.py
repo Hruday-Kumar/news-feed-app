@@ -472,10 +472,15 @@ async def fetch_news_batch(query: str, max_per_request: int = 10) -> List[Dict]:
     all_articles = []
     seen_urls = set()
     
+    if not GNEWS_API_KEY:
+        logger.error("GNEWS_API_KEY not set! Cannot fetch news.")
+        return []
+    
     try:
         async with httpx.AsyncClient(timeout=15) as client:
             for variation in QUERY_VARIATIONS:
                 search_query = f"{query}{variation}".strip()
+                logger.info(f"Fetching news for: '{search_query}'")
                 
                 response = await client.get(
                     GNEWS_URL,
@@ -488,10 +493,12 @@ async def fetch_news_batch(query: str, max_per_request: int = 10) -> List[Dict]:
                 )
                 
                 if response.status_code != 200:
+                    logger.warning(f"GNews API error: {response.status_code} - {response.text[:200]}")
                     continue
                 
                 data = response.json()
                 articles = data.get("articles", [])
+                logger.info(f"Got {len(articles)} articles for '{search_query}'")
                 
                 for article in articles:
                     url = article.get("url", "")
@@ -512,14 +519,17 @@ async def fetch_news_batch(query: str, max_per_request: int = 10) -> List[Dict]:
                     break
                     
     except Exception as e:
-        print(f"⚠️ News fetch error: {e}")
+        logger.error(f"News fetch error: {e}")
     
+    logger.info(f"Total unique articles fetched: {len(all_articles)}")
     return all_articles
 
 async def fetch_news(query: str, max_results: int = 10, page: int = 1) -> List[Dict]:
     """Fetch news from GNews API with caching and pagination."""
     base_cache_key = query.lower().strip()
     now = time.time()
+    
+    logger.info(f"fetch_news called: query='{query}', page={page}")
     
     # Check if we have extended cache for this query
     if base_cache_key in EXTENDED_CACHE:
@@ -528,11 +538,15 @@ async def fetch_news(query: str, max_results: int = 10, page: int = 1) -> List[D
         if now - timestamp < CACHE_TTL:
             start = (page - 1) * max_results
             end = start + max_results
+            logger.info(f"Cache hit: {len(cached_articles)} articles, returning [{start}:{end}]")
             if start < len(cached_articles):
                 return cached_articles[start:end]
+            else:
+                logger.info(f"Page {page} beyond cache ({len(cached_articles)} articles)")
     
     # Fetch fresh data for page 1 or if cache is empty/expired
     if page == 1 or base_cache_key not in EXTENDED_CACHE:
+        logger.info(f"Fetching fresh data for query: '{query}'")
         articles = await fetch_news_batch(query)
         
         if articles:
