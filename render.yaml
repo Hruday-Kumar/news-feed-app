@@ -53,7 +53,7 @@ services:
     plan: free
     rootDir: frontend
     buildCommand: |
-      npm ci --legacy-peer-deps
+      npm install --include=dev
       npm run build
     startCommand: npm start
     healthCheckPath: /
